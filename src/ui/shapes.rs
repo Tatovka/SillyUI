@@ -1,102 +1,114 @@
 
 use std::f32::consts::{PI, TAU};
+use std::marker::PhantomData;
 
 use super::*;
 use super::trajectories::*;
 
+pub mod circle_shape;
+pub mod rect_shape;
+pub mod ring_shape;
+
+pub trait HitboxPadding: Sized {
+    fn padded(&self, extra: f32) -> Self;
+}
+pub trait ShapeBuilder<T> 
+where Self: Sized {
+    fn build(&self) -> T;
+    fn set_position(self, p: Point) -> Self;
+} 
+pub trait Path<V, T: Trajectory<V>>: Shape {
+    fn start_pos(&self) -> Point;
+
+    fn get_trajectory(&self) -> T;
+
+    fn slice_to(&self, val: V) -> impl Shape;
+}
+
+#[macro_export]
+macro_rules! shape_builder {
+    (
+        $name:ident for $target:ty {
+            $( $field:ident : $ty:ty = $default:expr ),* $(,)?
+        }
+        position: $pos_field:ident
+        => $build:expr
+    ) => {
+        #[derive(Clone, Copy, Debug, Default)]
+        pub struct $name {
+            $( $field: Option<$ty>, )*
+        }
+
+        impl $name {
+            pub fn empty() -> Self { Self::default() }
+            $(
+                pub fn $field(mut self, v: $ty) -> Self {
+                    self.$field = Some(v);
+                    self
+                }
+            )*
+        }
+
+        impl ShapeBuilder<$target> for $name {
+            fn build(&self) -> $target {
+                $( let $field = self.$field.unwrap_or($default); )*
+                $build
+            }
+            fn set_position(self, p: Point) -> Self {
+                self.$pos_field(p)
+            }
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
-pub struct CircleShape {
-    pub center: Point,
-    pub radius: f32
+pub struct FnShapeBuilder<U, V, F, UB> 
+where
+    U: Shape,
+    V: Shape,
+    UB: ShapeBuilder<U>,
+    F: Copy + FnOnce(U) -> V 
+{
+    u_builder: UB,
+    fun: F,
+    _marker: std::marker::PhantomData<(U, V)>
 }
 
-impl CircleShape {
-    pub fn new(center: Point, r: f32) -> Self { CircleShape { center, radius: r }}
-}
-
-impl Shape for CircleShape {
-    fn hit(&self, p: Point) -> bool {
-        (p - self.center).sq() <= self.radius * self.radius
+impl<U, V, F, UB> ShapeBuilder<V> for FnShapeBuilder<U, V, F, UB> 
+where
+    U: Shape,
+    V: Shape,
+    UB: ShapeBuilder<U>,
+    F: Copy + FnOnce(U) -> V + Copy 
+{
+    fn build(&self) -> V {
+        let fun = self.fun;
+        fun(self.u_builder.build())
     }
 
-    fn draw(&self, d: &mut RaylibDrawHandle, color: Color) {
-        d.draw_circle_v(self.center, self.radius, color);
-    }
-}
-
-impl Movable for CircleShape {
-    fn move_by(&mut self, p: Point) {
-        self.center = self.center + p;
-    }
-
-    fn move_to(&mut self, p: Point) {
-        self.center = p;
-    }
-}
-
-#[derive(Clone, Copy)]
-pub struct RectShape {
-    pub center: Point,
-    pub size: Point,
-    pub angle: f32
-}
-
-impl RectShape {
-    pub fn new(x: f32, y:f32, w: f32, h: f32, angle: f32) -> Self { RectShape {center: (x, y).into(), size: (w, h).into(), angle} }
-    pub fn new_vec(origin: Point, size: Point, angle: f32) -> Self { RectShape {center: origin, size, angle} }
-    
-    pub fn from_top_left(origin: Point, size: Point, angle: f32) -> Self {
-        let u = Point::from_angle(angle);
-
-        let sft = dot(Vec2::new(u, u.ortog()), size);
-
-        Self{center: origin + sft * 0.5, size: size.into(), angle}
-    }
-    
-    fn axes(&self) -> Vec2<Point> {
-        let cs: Point = Point::from_angle(self.angle);
-        comp_mul(Vec2::new(cs, cs.ortog()), self.size / 2.0)
-    }
-
-    pub fn get_origin(&self) -> Point {
-        self.center
+    fn set_position(mut self, p: Point) -> Self {
+        self.u_builder = self.u_builder.set_position(p);
+        self
     }
 }
 
-impl Shape for RectShape {
-    fn hit(&self, p: Point) -> bool {
-        let axes = self.axes();
-
-        let w = p - self.center;
-
-        let proj_u = dot(w, axes.x) / axes.x.sq();
-        let proj_v = dot(w, axes.y) / axes.y.sq();
-
-        proj_u.abs() <= 1.0 && proj_v.abs() <= 1.0
-    }
-    
-    fn draw(&self, d: &mut RaylibDrawHandle, color: Color) {
-        let rec = Rectangle::new(-self.size.x / 2.0, -self.size.y / 2.0, self.size.x, self.size.y);
-        
-        let mut d = d.rl_push_matrix();
-        
-        d.rl_translatef(self.center.x, self.center.y, 0.0);
-
-        d.rl_rotatef(self.angle.to_degrees(), 0.0, 0.0, 1.0);
-
-        d.draw_rectangle_rounded(rec, 0.5, 128, color);
-    }
+fn fn_builder<U, V, F, UB> (ub: UB, f: F) -> FnShapeBuilder<U, V, F, UB>
+where 
+    U: Shape,
+    V: Shape,
+    UB: ShapeBuilder<U>,
+    F: Copy + FnOnce(U) -> V + Copy 
+{
+        FnShapeBuilder { u_builder: ub, fun: f, _marker: PhantomData }
 }
 
-impl Movable for RectShape {
-    fn move_by(&mut self, p: Point) {
-        self.center = self.center + p;
+pub fn padded<U, UB> (ub: UB, extra: f32) -> impl ShapeBuilder<Combined<U, U>> + Copy
+where 
+    U: Shape + HitboxPadding + Copy,
+    UB: ShapeBuilder<U> + Copy, {
+        fn_builder(ub, move |u: U| Combined{hitbox: u.padded(extra), drawable: u})
     }
 
-    fn move_to(&mut self, p: Point) {
-        self.center = p;
-    }
-}
 
 #[derive (Clone, Copy)]
 pub struct Combined<H: Shape, D: Shape> {
@@ -116,7 +128,7 @@ where H: Shape, D: Shape {
 }
 
 impl<H, D> Movable for Combined<H, D>
-where H: Shape + Movable, D: Shape + Movable {
+where H: Shape + Movable, D: Shape + Movable{
     fn move_by(&mut self, p: Point) {
         self.hitbox.move_by(p);
         self.drawable.move_by(p);
@@ -128,75 +140,42 @@ where H: Shape + Movable, D: Shape + Movable {
     }
 }
 
-#[derive(Clone, Copy)]
-pub struct RingShape {
-    pub center: Point,
-    pub radius: f32,
-    pub width: f32,
-    pub start_angle: f32,
-    pub radians: f32
+pub struct CombinedBuilder<HB, DB> {
+    pub hitbox: HB,
+    pub drawable: DB
 }
 
-impl RingShape {
-    pub fn new(center: Point, radius: f32, width: f32) -> Self { RingShape { center, radius, width, start_angle: -PI, radians: TAU} }
-    pub fn sector(center: Point, radius: f32, width: f32, start_angle: f32, radians: f32) -> Self { RingShape { center, radius, width, start_angle, radians} }
-    pub fn inner_radius(&self) -> f32 {
-        self.radius - self.width
-    }
-    pub fn end_angle(&self) -> f32 {
-        self.start_angle + self.radians
-    }
-}
-
-impl Shape for RingShape {
-    fn hit(&self, p: Point) -> bool {
-        let sq_len = (p - self.center).sq();
-        let out_inner = self.inner_radius() * self.inner_radius() <= sq_len;
-        let in_outer = sq_len <= self.radius * self.radius;
-        let angle = ((p - self.center).angle() - self.start_angle).rem_euclid(TAU);
-        let in_sector = angle >= 0.0 && angle <= self.radians;
-        out_inner && in_outer && in_sector
+impl<H, D, HB, DB> ShapeBuilder<Combined<H, D>> for CombinedBuilder<HB, DB> 
+where
+    H: Shape, 
+    D: Shape, 
+    HB: ShapeBuilder<H>, 
+    DB: ShapeBuilder<D>
+{
+    fn set_position(mut self, p: Point) -> Self {
+        self.hitbox = self.hitbox.set_position(p);
+        self.drawable = self.drawable.set_position(p);
+        self
     }
 
-    fn draw(&self, d: &mut RaylibDrawHandle, color: Color) {
-        let segments = 36;
-        d.draw_ring(self.center, self.inner_radius(), self.radius, self.start_angle.to_degrees(), (self.start_angle + self.radians).to_degrees(), segments, color);
+    fn build(&self) -> Combined<H, D> {
+        Combined { hitbox: self.hitbox.build(), drawable: self.drawable.build() }
     }
 }
 
-impl Movable for RingShape {
-    fn move_by(&mut self, p: Point) {
-        self.center = self.center + p;
-    }
-
-    fn move_to(&mut self, p: Point) {
-        self.center = p;
-    }
-}
-
-pub trait Path<V, T: Trajectory<V>>: Shape {
-    fn start_pos(&self) -> Point;
-
-    fn get_trajectory(&self) -> T;
-}
-
-impl Path<f32, RingTrajectory> for RingShape {
+impl<V, T, H, D> Path<V, T> for Combined<H, D> 
+where 
+    T: Trajectory<V>, 
+    H: Path<V, T>, 
+    D: Path<V, T>
+{
     fn start_pos(&self) -> Point {
-        self.center + Point::from_angle(self.start_angle) * (self.radius - self.width / 2.) 
+        self.hitbox.start_pos()
     }
-
-    fn get_trajectory(&self) -> RingTrajectory {
-        RingTrajectory {center: self.center, radius: self.radius - self.width / 2., start_angle: self.start_angle, radians: self.radians}
+    fn get_trajectory(&self) -> T {
+        self.hitbox.get_trajectory()
     }
-}
-
-impl Path<f32, LinearTrajectory> for RectShape {
-    fn start_pos(&self) -> Point {
-        let u = self.axes().x;
-        self.center - u
-    }
-
-    fn get_trajectory(&self) -> LinearTrajectory {
-        LinearTrajectory { angle: self.angle, start: self.center - self.axes().x, length: self.size.x }
+    fn slice_to(&self, val: V) -> impl Shape {
+        self.drawable.slice_to(val)
     }
 }

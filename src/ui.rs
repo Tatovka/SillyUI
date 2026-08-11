@@ -7,6 +7,7 @@ pub mod point;
 pub mod shapes;
 pub mod widgets;
 pub mod raylib_launch;
+pub mod theme;
 
 use self::widgets::*;
 use point::*;
@@ -36,6 +37,19 @@ pub trait Movable {
     fn move_by(&mut self, v: Point);
 }
 
+fn moved_to<T: Clone + Movable>(obj: &T, p: Point) -> T {
+    let mut res = obj.clone();
+    res.move_to(p);
+    res
+}
+
+fn moved_by<T: Clone + Movable>(obj: &T, p: Point) -> T {
+    let mut res = obj.clone();
+    res.move_by(p);
+    res
+}
+
+
 pub struct Window {
     pub width: f32,
     pub height: f32,
@@ -47,6 +61,8 @@ pub struct GuiContext<M> {
     hovered: Option<usize>,
     pressed: Option<usize>,
     captured: Option<usize>,
+
+    first_frame: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -58,6 +74,7 @@ pub struct MouseState {
     pub delta: Point,
 }
 
+
 impl<M: Clone> GuiContext<M> {
     pub fn new() -> Self {
         Self {
@@ -65,9 +82,15 @@ impl<M: Clone> GuiContext<M> {
             hovered: None,
             pressed: None,
             captured: None,
+            first_frame: true
         }
     }
 
+    pub fn first_frame(&mut self) -> bool{
+        let res = self.first_frame;
+        self.first_frame = false;
+        res
+    }
     pub fn add<W>(&mut self, widget: W) -> Shared<W>
     where
         W: Widget<M> + 'static,
@@ -76,7 +99,7 @@ impl<M: Clone> GuiContext<M> {
         self.widgets.push(res.clone());
         res
     }
-
+    
     pub fn set_cursor(&self, rl: &mut RaylibHandle) {
         let arrow = self
             .hovered
@@ -93,14 +116,16 @@ impl<M: Clone> GuiContext<M> {
         }
     }
 
-    pub fn process_mouse(&mut self, state: MouseState, event_handler: &mut impl FnMut(M) -> ()) {
+    pub fn process_mouse(&mut self, state: MouseState, event_handler: &mut impl FnMut(M) -> ()) -> bool{
         let mouse_pos = state.pos;
+
+        let mut was_action = false;
 
         if let Some(widget_id) = self.captured {
             self.update_captured(widget_id, state, event_handler);
-            return;
+            return true;
         }
-
+        
         if state.moved {
             if let Some(widget_id) = self.hovered {
                 let widget = self.widgets[widget_id].clone();
@@ -119,9 +144,11 @@ impl<M: Clone> GuiContext<M> {
             if self.hovered.is_none() {
                 self.try_hover(event_handler, state);
             }
+            was_action = true;
         }
 
         if state.pressed {
+            was_action = true;
             if let Some(widget_id) = self.hovered {
                 let widget = self.widgets[widget_id].clone();
                 if widget.borrow_mut().follow_pointer(state.pos) {
@@ -130,7 +157,7 @@ impl<M: Clone> GuiContext<M> {
                         event_handler(event);
                     }
                     self.hovered = None;
-                    return;
+                    return true;
                 }
                 self.pressed = Some(widget_id);
                 if let Some(event) = widget.borrow_mut().on_click(mouse_pos) {
@@ -150,7 +177,9 @@ impl<M: Clone> GuiContext<M> {
                 }
             }
             self.pressed = None;
+            was_action = true;
         }
+        was_action
     }
 
     fn widget_state(&self, id: usize) -> WidgetState {

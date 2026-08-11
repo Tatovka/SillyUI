@@ -1,14 +1,16 @@
-
-
+use std::marker::PhantomData;
+use crate::ui::theme::default_theme;
 use crate::ui::widgets::handler::Handler;
 use crate::ui::widgets::trajectories::*;
+use crate::ui::shapes::*;
 
 use super::*;
-pub struct Slider<M : Clone, V : Clone, S1: Shape + Movable, S2: Shape, T: Trajectory<V>> {
+pub struct Slider<M : Clone, V : Clone, S1: Shape + Movable, S2: Path<V, T>, T: Trajectory<V>> {
     pub handler: Handler<M, V, S1, T>,
 
     pub track_shape: S2,
     pub track_color: Color,
+    pub active_color: Color,
 
     handler_hovered: bool
 }
@@ -18,18 +20,18 @@ where
     M : Clone + 'static, 
     V : Clone + 'static, 
     S1: Shape + Movable,
-    S2: Shape,
-    T: Trajectory<V> {
+    S2: Path<V, T>,
+    T: Trajectory<V>{
         pub fn new(
             handler_shape: S1, 
             handler_color: Color,
-            track_shape: S2, 
+            path: S2, 
             track_color: Color,
+            active_color: Color,
             on_capture: Box<dyn Fn(V) -> M>,
             on_drag: Box<dyn Fn(V) -> M>,
             on_release: Box<dyn Fn(V) -> M>,
             base_val: V,
-            trajectory: T,
         ) -> Self {
             let handler = Handler::new(
                 handler_shape,
@@ -38,13 +40,14 @@ where
                 on_release,
                 on_drag,
                 base_val.clone(),
-                trajectory
+                path.get_trajectory()
             );
 
             let mut res = Slider { 
                 handler,
-                track_shape,
+                track_shape: path,
                 track_color,
+                active_color: active_color,
                 handler_hovered: false
             };
             res.set_val(base_val);
@@ -58,40 +61,134 @@ where
         }
 }
 
-impl<M, V, S1, S2, T> Slider<M, V, S1, S2, T> 
+pub struct SliderBuilder<M, V, HB, TB, T, P>
 where 
-    M : Clone + 'static, 
-    V : Clone + 'static, 
-    S1: Shape + Movable + Copy,
-    S2: Shape + Copy,
-    T: Trajectory<V> + Copy{
-        pub fn from(
-            slider: &Self, 
-            on_capture: Box<dyn Fn(V) -> M>,
-            on_drag: Box<dyn Fn(V) -> M>,
-            on_release: Box<dyn Fn(V) -> M>,
-            base_val: V,
-        ) -> Self {
-            let handler = Handler::new(
-                slider.handler.shape,
-                slider.handler.main_color,
-                on_capture,
-                on_release,
-                on_drag,
-                base_val.clone(),
-                slider.handler.trajectory
-            );
+    M : Copy, 
+    V : Copy, 
+    T : Trajectory<V>,
+    P : Path<V, T>,
+    TB : ShapeBuilder<P>
+{
+    track: TB,
+    handler_shape: HB,
 
-            let mut res = Slider { 
-                handler,
-                track_shape: slider.track_shape,
-                track_color: slider.track_color,
-                handler_hovered: false
-            };
+    value: Option<V>,
 
-            res.set_val(base_val);
-            res
+    on_capture: Option<Box<dyn Fn(V) -> M>>,
+    on_drag: Option<Box<dyn Fn(V) -> M>>,
+    on_release: Option<Box<dyn Fn(V) -> M>>,
+
+    handler_color: Option<Color>,
+    track_color: Option<Color>,
+    active_color: Option<Color>,
+
+    _marker: std::marker::PhantomData<(T, P)>
+}
+
+impl<M, V, HB, TB, T, P> SliderBuilder<M, V, HB, TB, T, P>
+where 
+    M : Copy + 'static, 
+    V : Copy + Default + 'static, 
+    T : Trajectory<V>,
+    P : Path<V, T>,
+    TB : ShapeBuilder<P> + Copy,
+    HB: Copy 
+{
+
+    pub fn from_shapes(track: TB, handler: HB) -> Self {
+        Self {
+            handler_shape: handler,
+            track: track,
+            handler_color: None,
+            track_color: None,
+            active_color: None,
+            value: None,
+            on_capture: None,
+            on_drag: None,
+            on_release: None,
+            _marker: PhantomData
         }
+    }
+
+    pub fn as_template(&self) -> Self {
+        let mut res = Self::from_shapes(self.track, self.handler_shape);
+        res.handler_color = self.handler_color;
+        res.track_color = self.track_color;
+        res
+    }
+
+    pub fn handler_color(mut self, color: Color) -> Self {
+        self.handler_color = Some(color);
+        self
+    }
+
+    pub fn track_color(mut self, color: Color) -> Self {
+        self.track_color = Some(color);
+        self
+    }
+
+    pub fn active_color(mut self, color: Color) -> Self {
+        self.active_color = Some(color);
+        self
+    }
+
+    pub fn position(mut self, p: Point) -> Self {
+        self.track = self.track.set_position(p);
+        self
+    }
+
+    pub fn on_action(self, f: impl Fn(V) -> M + Clone + 'static) -> Self {
+        let (a, b, c) = (f.clone(), f.clone(), f);
+        self.on_capture(a).on_drag(b).on_release(c)
+    }
+
+    pub fn on_capture(mut self, f: impl Fn(V) -> M + 'static) -> Self {
+        self.on_capture = Some(Box::new(f));
+        self
+    }
+
+    pub fn on_drag(mut self, f: impl Fn(V) -> M + 'static) -> Self {
+        self.on_drag = Some(Box::new(f));
+        self
+    }
+
+    pub fn on_release(mut self, f: impl Fn(V) -> M + 'static) -> Self {
+        self.on_release = Some(Box::new(f));
+        self
+    }
+
+    pub fn value(mut self, v: V) -> Self {
+        self.value = Some(v);
+        self
+    }
+
+    pub fn build<S>(self) -> Slider<M, V, S, P, T>
+    where
+        S: Shape + Movable, 
+        HB: ShapeBuilder<S>, 
+        TB: ShapeBuilder<P> {
+
+        let on_capture = self.on_capture.expect("SliderBuilder: on_capture is required");
+        let on_drag = self.on_drag.expect("SliderBuilder: on_drag is required");
+        let on_release = self.on_release.expect("SliderBuilder: on_release is required");
+
+        let path = self.track.build();
+        let handler_shape = self.handler_shape.set_position(path.start_pos()).build();
+
+        let default_theme = default_theme();
+
+        Slider::new(
+            handler_shape, 
+            self.handler_color.unwrap_or(default_theme.surface()), 
+            path, 
+            self.track_color.unwrap_or(default_theme.track()), 
+            self.active_color.unwrap_or(default_theme.slider_active()),
+            on_capture, 
+            on_drag, 
+            on_release, 
+            self.value.unwrap_or_default()
+        )
+    }
 }
 
 impl<M, V, S1, S2, T> Movable for Slider<M, V, S1, S2, T> 
@@ -99,8 +196,9 @@ where
     M : Clone + 'static, 
     V : Clone + 'static, 
     S1: Shape + Movable,
-    S2: Shape + Movable,
-    T: Trajectory<V> + Movable {
+    S2: Path<V, T> + Movable,
+    T: Trajectory<V> + Movable 
+{
         fn move_by(&mut self, v: Point) {
             self.handler.shape.move_by(v);
             self.handler.trajectory.move_by(v);
@@ -119,7 +217,7 @@ where
     M : Clone, 
     V : Clone, 
     S1: Shape + Movable,
-    S2: Shape,
+    S2: Path<V, T>,
     T: Trajectory<V> + Copy
 {
     fn hit(&self, p: Point) -> bool {
@@ -132,7 +230,7 @@ where
     M : Clone + 'static, 
     V : Clone, 
     S1: Shape + Movable,
-    S2: Shape,
+    S2: Path<V, T>,
     T: Trajectory<V> + Copy {
 
     fn draw(&self, d: &mut RaylibDrawHandle, state: WidgetState) {
@@ -141,6 +239,7 @@ where
         handler_state.hovered &= self.handler_hovered;
 
         self.track_shape.draw(d, self.track_color);
+        self.track_shape.slice_to(self.handler.val.clone()).draw(d, self.active_color);
         self.handler.draw(d, handler_state);
     }
 
@@ -154,7 +253,7 @@ where
     M : Clone + 'static, 
     V : Clone, 
     S1: Shape + Movable,
-    S2: Shape,
+    S2: Path<V, T>,
     T: Trajectory<V> + Copy {
     
     fn on_pointer_move(&mut self, _: Point, pos: Point) -> Option<M> {

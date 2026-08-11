@@ -1,6 +1,6 @@
 use std::ops::{Add, Div, Mul, Neg, Sub};
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone, Copy, Default)]
 pub struct Vec2<S> {
     pub x: S,
     pub y: S,
@@ -35,6 +35,15 @@ where
     S: Add<Output = S> + Mul<T, Output = S>,
 {
     lhs.x * rhs.x + lhs.y * rhs.y
+}
+
+impl<S> Vec2<S>
+where
+    S: Add<Output = S> + Copy,
+{
+    pub fn sum(self) -> S {
+        self.x + self.y
+    }
 }
 
 impl<S> Vec2<S>
@@ -102,6 +111,7 @@ impl<S: Neg> Neg for Vec2<S> {
 }
 
 pub type Point = Vec2<f32>;
+
 
 impl Point {
     pub fn scalar(a: Self, b: Self) -> f32 {

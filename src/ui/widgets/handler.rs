@@ -34,6 +34,7 @@ impl<M: Clone, V: Clone, S: Shape + Movable, T: Trajectory<V>> Hitbox for Handle
 
 impl<M: Clone + 'static, V: Clone, S: Shape + Movable, T: Trajectory<V>> Drawable for Handler<M, V, S, T> {
     fn draw(&self, d: &mut RaylibDrawHandle, state: WidgetState) {
+        self.shape.draw(d, Color::new(0, 0, 0, 40));
         self.shape.draw(d, self.get_color(state));
     }
 
