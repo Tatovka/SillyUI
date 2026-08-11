@@ -16,8 +16,14 @@ impl Shape for CircleShape {
         (p - self.center).sq() <= self.radius * self.radius
     }
 
-    fn draw(&self, d: &mut RaylibDrawHandle, color: Color) {
-        d.draw_circle_v(self.center, self.radius, color);
+    fn draw(&self, d: &mut RaylibDrawHandle, style: Style) {
+        if let Some(color) = style.shadow {
+            d.draw_circle_v(self.center, self.radius + 1.5, color);        
+        }
+        d.draw_circle_v(self.center, self.radius, style.color);
+        if let Some((width, color)) = style.outline {
+            d.draw_ring(self.center, self.radius, self.radius + width, 0.0, 360.0, 128, color);
+        }
     }
 }
 

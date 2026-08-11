@@ -35,7 +35,7 @@ impl Shape for RectShape {
         proj_u.abs() <= 1.0 && proj_v.abs() <= 1.0
     }
     
-    fn draw(&self, d: &mut RaylibDrawHandle, color: Color) {
+    fn draw(&self, d: &mut RaylibDrawHandle, style: Style) {
         let rec = Rectangle::new(-self.size.x / 2.0, -self.size.y / 2.0, self.size.x, self.size.y);
         
         let mut d = d.rl_push_matrix();
@@ -44,7 +44,18 @@ impl Shape for RectShape {
 
         d.rl_rotatef(self.angle.to_degrees(), 0.0, 0.0, 1.0);
 
-        d.draw_rectangle_rounded(rec, 0.5, 128, color);
+        if let Some(color) = style.shadow {
+            let shadow_size = self.size + Point::from_scalar(3.5);
+            let shadow_rect = Rectangle::new(-shadow_size.x / 2.0, -shadow_size.y / 2.0, shadow_size.x, shadow_size.y);
+            
+            d.draw_rectangle_rounded(shadow_rect, 0.5, 128, color);        
+        }
+
+        d.draw_rectangle_rounded(rec, 0.5, 128, style.color);
+
+        if let Some((width, outline_color)) = style.outline {
+            d.draw_rectangle_rounded_lines_ex(rec, 0.5, 128, width, outline_color);
+        }
     }
 }
 

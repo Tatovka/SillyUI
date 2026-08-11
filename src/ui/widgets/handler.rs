@@ -3,7 +3,9 @@ use super::trajectories::*;
 
 pub struct Handler<M : Clone, V : Clone, S: Shape + Movable, T: Trajectory<V>> {
     pub shape: S,
-    pub main_color: Color,
+
+    pub main_style: Style,
+    pub style_change: Box<dyn WidgetStyle>,
 
     pub on_capture: Box<dyn Fn(V) -> M>,
     pub on_drag: Box<dyn Fn(V) -> M>,
@@ -15,11 +17,12 @@ pub struct Handler<M : Clone, V : Clone, S: Shape + Movable, T: Trajectory<V>> {
 
 
 impl<M: Clone + 'static, V: Clone + 'static, S: Shape + Movable, T: Trajectory<V>> Handler<M, V, S, T> {
-    pub fn new(shape: S, main_color: Color, 
+    pub fn new(
+        shape: S, main_style: Style, style_change: Box<dyn WidgetStyle>,
         on_capture: Box<dyn Fn(V) -> M>, on_release: Box<dyn Fn(V) -> M>, on_drag: Box<dyn Fn(V) -> M>,
         base_val: V, trajectory: T,
     ) -> Self {
-        Self { shape, main_color, 
+        Self { shape, main_style, style_change: style_change, 
             on_capture, on_release, on_drag,
             val: base_val.clone(), trajectory,
         }
@@ -34,20 +37,7 @@ impl<M: Clone, V: Clone, S: Shape + Movable, T: Trajectory<V>> Hitbox for Handle
 
 impl<M: Clone + 'static, V: Clone, S: Shape + Movable, T: Trajectory<V>> Drawable for Handler<M, V, S, T> {
     fn draw(&self, d: &mut RaylibDrawHandle, state: WidgetState) {
-        self.shape.draw(d, Color::new(0, 0, 0, 40));
-        self.shape.draw(d, self.get_color(state));
-    }
-
-    fn get_color(&self, state: WidgetState) -> Color {
-        if state.captured {
-            return self.main_color.brightness(-0.4);
-        }
-
-        if state.hovered {
-            return self.main_color.brightness(-0.3);
-        }
-
-        self.main_color
+        self.shape.draw(d, self.style_change.style(self.main_style, state));
     }
 }
 

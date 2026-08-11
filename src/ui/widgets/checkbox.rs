@@ -1,9 +1,13 @@
+use raylib::ffi::CSSPalette;
+
 use super::*;
 
 pub struct Checkbox<M: Clone, S: Shape, C: Shape> {
     pub box_shape: S,
     pub check_shape: C,   
-    pub box_color: Color,
+
+    pub box_style: Style,
+
     pub check_color: Color,
     pub checked: bool,
     pub on_toggle: Box<dyn Fn(bool) -> M>,
@@ -13,12 +17,12 @@ impl<M: Clone + 'static, S: Shape, C: Shape> Checkbox<M, S, C> {
     pub fn new(
         box_shape: S,
         check_shape: C,
-        box_color: Color,
+        box_style: Style,
         check_color: Color,
         checked: bool,
         on_toggle: Box<dyn Fn(bool) -> M>,
     ) -> Self {
-        Self { box_shape, check_shape, box_color, check_color, checked, on_toggle }
+        Self { box_shape, check_shape, box_style, check_color, checked, on_toggle }
     }
 
     pub fn is_checked(&self) -> bool {
@@ -38,20 +42,10 @@ impl<M: Clone, S: Shape, C: Shape> Hitbox for Checkbox<M, S, C> {
 
 impl<M: Clone + 'static, S: Shape, C: Shape> Drawable for Checkbox<M, S, C> {
     fn draw(&self, d: &mut RaylibDrawHandle, state: WidgetState) {
-        self.box_shape.draw(d, self.get_color(state));
+        self.box_shape.draw(d, Style::new(Color::LIGHTGRAY).shadow(Color::new(0,0,0,50)));
         if self.checked {
-            self.check_shape.draw(d, self.check_color);
+            self.check_shape.draw(d, Style::new(self.check_color).shadow(Color::new(0,0,0,50)));
         }
-    }
-
-    fn get_color(&self, state: WidgetState) -> Color {
-        if state.pressed && state.hovered {
-            return self.box_color.brightness(-0.5);
-        }
-        if state.pressed || state.hovered {
-            return self.box_color.brightness(-0.3);
-        }
-        self.box_color
     }
 }
 

@@ -122,8 +122,8 @@ where H: Shape, D: Shape {
         self.hitbox.hit(p)
     }
 
-    fn draw(&self, d: &mut RaylibDrawHandle, color: Color) {
-        self.drawable.draw(d, color);
+    fn draw(&self, d: &mut RaylibDrawHandle, style: Style) {
+        self.drawable.draw(d, style);
     }
 }
 

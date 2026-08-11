@@ -15,7 +15,7 @@ impl RingShape {
     pub fn sector(center: Point, radius: f32, width: f32, start_angle: f32, radians: f32) -> Self { 
         RingShape { center, radius, width, start_angle, radians} 
     }
-    
+
     pub fn inner_radius(&self) -> f32 {
         self.radius - self.width
     }
@@ -34,9 +34,17 @@ impl Shape for RingShape {
         out_inner && in_outer && in_sector
     }
 
-    fn draw(&self, d: &mut RaylibDrawHandle, color: Color) {
+    fn draw(&self, d: &mut RaylibDrawHandle, style: Style) {
         let segments = 36;
-        d.draw_ring(self.center, self.inner_radius(), self.radius, self.start_angle.to_degrees(), (self.start_angle + self.radians).to_degrees(), segments, color);
+        d.draw_ring(
+            self.center, 
+            self.inner_radius(), 
+            self.radius, 
+            self.start_angle.to_degrees(), 
+            self.end_angle().to_degrees(), 
+            segments, 
+            style.color
+        );
     }
 }
 

@@ -22,14 +22,42 @@ pub trait Hitbox {
     fn hit(&self, p: Point) -> bool;
 }
 
+#[derive(Clone, Copy)]
+pub struct Style {
+    pub color: Color,
+    pub outline: Option<(f32, Color)>,
+    pub shadow: Option<Color>
+}
+
+impl Style {
+    pub fn new(color: Color) -> Self {
+        Style { color, outline: None, shadow: None }
+    }
+
+    pub fn outline(mut self, width: f32, color: Color) -> Self {
+        self.outline = Some((width, color));
+        self
+    }
+
+    pub fn shadow(mut self, color: Color) -> Self {
+        self.shadow = Some(color);
+        self
+    }
+
+    pub fn color(mut self, color: Color) -> Self {
+        self.color = color;
+        self
+    }
+}
+
+
 pub trait Drawable {
     fn draw(&self, rl: &mut RaylibDrawHandle, state: WidgetState);
-    fn get_color(&self, state: WidgetState) -> Color;
 }
 
 pub trait Shape {
     fn hit(&self, p: Point) -> bool;
-    fn draw(&self, d: &mut RaylibDrawHandle, color: Color);
+    fn draw(&self, d: &mut RaylibDrawHandle, style: Style);
 }
 
 pub trait Movable {

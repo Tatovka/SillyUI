@@ -1,14 +1,14 @@
 use super::*;
 pub struct Button<M: Clone, S: Shape> {
     shape: S,
-    pub main_color: Color,
+    pub main_style: Style,
 
     pub on_click: M,
 }
 
 impl<M: Clone + 'static, S: Shape + 'static> Button<M, S> {
-    pub fn new(shape: S, main_color: Color, on_click: M) -> Self {
-        Self { shape, main_color, on_click: on_click.clone() }
+    pub fn new(shape: S, main_style: Style, on_click: M) -> Self {
+        Self { shape, main_style, on_click: on_click.clone() }
     }
 }
 
@@ -20,17 +20,7 @@ impl<M: Clone,  S: Shape> Hitbox for Button<M, S> {
 
 impl<M: Clone + 'static, S: Shape> Drawable for Button<M, S> {
     fn draw(&self, d: &mut RaylibDrawHandle, state: WidgetState) {
-       self.shape.draw(d, self.get_color(state));
-    }
-
-    fn get_color(&self, state: WidgetState) -> Color {
-        if state.pressed && state.hovered {
-            return self.main_color.brightness(-0.5);
-        }
-        if state.pressed || state.hovered {
-            return self.main_color.brightness(-0.3);
-        }
-        self.main_color
+       self.shape.draw(d, DarkenOnInteract::default().style(self.main_style, state));
     }
 }
 

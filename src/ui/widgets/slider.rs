@@ -9,8 +9,9 @@ pub struct Slider<M : Clone, V : Clone, S1: Shape + Movable, S2: Path<V, T>, T: 
     pub handler: Handler<M, V, S1, T>,
 
     pub track_shape: S2,
-    pub track_color: Color,
-    pub active_color: Color,
+
+    pub track_style: Style,
+    pub active_style: Style,
 
     handler_hovered: bool
 }
@@ -24,10 +25,12 @@ where
     T: Trajectory<V>{
         pub fn new(
             handler_shape: S1, 
-            handler_color: Color,
+            handler_style: Style,
+
+            handler_style_change: Box<dyn WidgetStyle>,
             path: S2, 
-            track_color: Color,
-            active_color: Color,
+            track_style: Style,
+            active_style: Style,
             on_capture: Box<dyn Fn(V) -> M>,
             on_drag: Box<dyn Fn(V) -> M>,
             on_release: Box<dyn Fn(V) -> M>,
@@ -35,7 +38,8 @@ where
         ) -> Self {
             let handler = Handler::new(
                 handler_shape,
-                handler_color,
+                handler_style,
+                handler_style_change,
                 on_capture,
                 on_release,
                 on_drag,
@@ -46,8 +50,8 @@ where
             let mut res = Slider { 
                 handler,
                 track_shape: path,
-                track_color,
-                active_color: active_color,
+                track_style,
+                active_style,
                 handler_hovered: false
             };
             res.set_val(base_val);
@@ -78,9 +82,10 @@ where
     on_drag: Option<Box<dyn Fn(V) -> M>>,
     on_release: Option<Box<dyn Fn(V) -> M>>,
 
-    handler_color: Option<Color>,
-    track_color: Option<Color>,
-    active_color: Option<Color>,
+    handler_style: Option<Style>,
+    handler_style_change: Option<Box<dyn WidgetStyle>>,
+    track_style: Option<Style>,
+    active_style: Option<Style>,
 
     _marker: std::marker::PhantomData<(T, P)>
 }
@@ -99,9 +104,10 @@ where
         Self {
             handler_shape: handler,
             track: track,
-            handler_color: None,
-            track_color: None,
-            active_color: None,
+            handler_style: None,
+            handler_style_change: None,
+            track_style: None,
+            active_style: None,
             value: None,
             on_capture: None,
             on_drag: None,
@@ -112,23 +118,29 @@ where
 
     pub fn as_template(&self) -> Self {
         let mut res = Self::from_shapes(self.track, self.handler_shape);
-        res.handler_color = self.handler_color;
-        res.track_color = self.track_color;
+        res.handler_style = self.handler_style;
+        res.track_style = self.track_style;
+        res.active_style = self.active_style;
         res
     }
 
-    pub fn handler_color(mut self, color: Color) -> Self {
-        self.handler_color = Some(color);
+    pub fn handler_style(mut self, style: Style) -> Self {
+        self.handler_style = Some(style);
         self
     }
 
-    pub fn track_color(mut self, color: Color) -> Self {
-        self.track_color = Some(color);
+    pub fn handler_style_change(mut self, style: impl WidgetStyle + 'static) -> Self {
+        self.handler_style_change = Some(Box::new(style));
         self
     }
 
-    pub fn active_color(mut self, color: Color) -> Self {
-        self.active_color = Some(color);
+    pub fn track_style(mut self, style: Style) -> Self {
+        self.track_style = Some(style);
+        self
+    }
+
+    pub fn active_style(mut self, style: Style) -> Self {
+        self.active_style = Some(style);
         self
     }
 
@@ -179,10 +191,11 @@ where
 
         Slider::new(
             handler_shape, 
-            self.handler_color.unwrap_or(default_theme.surface()), 
+            self.handler_style.unwrap_or(Style::new(default_theme.surface()).shadow(Color::new(0,0,0,50))), 
+            self.handler_style_change.unwrap_or(Box::new(DarkenOnInteract::default())),
             path, 
-            self.track_color.unwrap_or(default_theme.track()), 
-            self.active_color.unwrap_or(default_theme.slider_active()),
+            self.track_style.unwrap_or(Style::new(default_theme.track())), 
+            self.active_style.unwrap_or(Style::new(default_theme.slider_active())),
             on_capture, 
             on_drag, 
             on_release, 
@@ -238,13 +251,9 @@ where
 
         handler_state.hovered &= self.handler_hovered;
 
-        self.track_shape.draw(d, self.track_color);
-        self.track_shape.slice_to(self.handler.val.clone()).draw(d, self.active_color);
+        self.track_shape.draw(d, self.track_style);
+        self.track_shape.slice_to(self.handler.val.clone()).draw(d, self.active_style);
         self.handler.draw(d, handler_state);
-    }
-
-    fn get_color(&self, _: WidgetState) -> Color {
-        self.track_color
     }
 }
 
