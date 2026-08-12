@@ -36,6 +36,17 @@ impl Shape for RingShape {
 
     fn draw(&self, d: &mut RaylibDrawHandle, style: Style) {
         let segments = 36;
+        if let Some(color) = style.shadow { 
+            d.draw_ring(
+            self.center, 
+            self.inner_radius(), 
+            self.radius + 2.5, 
+            self.start_angle.to_degrees(), 
+            self.end_angle().to_degrees(), 
+            segments, 
+            color
+        );
+        }
         d.draw_ring(
             self.center, 
             self.inner_radius(), 
@@ -45,6 +56,17 @@ impl Shape for RingShape {
             segments, 
             style.color
         );
+        if let Some((width, color)) = style.outline { 
+            d.draw_ring(
+            self.center, 
+            self.radius, 
+            self.radius + width, 
+            self.start_angle.to_degrees(), 
+            self.end_angle().to_degrees(), 
+            segments, 
+            color
+        );
+        }
     }
 }
 
