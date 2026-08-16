@@ -1,4 +1,6 @@
 
+use std::{thread::sleep, time};
+
 use raylib::ffi::PollInputEvents;
 
 use super::*;
@@ -45,7 +47,9 @@ pub fn frame<M: Clone>(
     );
 
     gui_context.set_cursor(rl);
-    rl.set_target_fps(120);
+    sleep(time::Duration::from_secs_f32(1.0 / 120.0));
+    // rl.set_target_fps(120);
+    
 
     if draw {
         let mut d = rl.begin_drawing(&thread);

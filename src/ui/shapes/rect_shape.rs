@@ -11,8 +11,15 @@ pub struct RectShape {
 impl RectShape {
     pub fn new(x: f32, y:f32, w: f32, h: f32, angle: f32) -> Self { RectShape {center: (x, y).into(), size: (w, h).into(), angle} }
     pub fn new_vec(origin: Point, size: Point, angle: f32) -> Self { RectShape {center: origin, size, angle} }
-    
-    fn axes(&self) -> Vec2<Point> {
+    pub fn from_top_left(origin: Point, size: Point, angle: f32) -> Self {
+        let u = Point::from_angle(angle);
+
+        let sft = dot(Vec2::new(u, u.ortog()), size);
+
+        Self{center: origin + sft * 0.5, size: size.into(), angle}
+    }
+
+    pub fn axes(&self) -> Vec2<Point> {
         let cs: Point = Point::from_angle(self.angle);
         comp_mul(Vec2::new(cs, cs.ortog()), self.size / 2.0)
     }
@@ -77,23 +84,6 @@ impl HitboxPadding for RectShape {
     }
 }
 
-impl Path<f32, LinearTrajectory> for RectShape {
-    fn start_pos(&self) -> Point {
-        let u = self.axes().x;
-        self.center - u
-    }
-
-    fn get_trajectory(&self) -> LinearTrajectory {
-        LinearTrajectory { angle: self.angle, start: self.center - self.axes().x, length: self.size.x }
-    }
-
-    fn slice_to(&self, val: f32) -> impl Shape {
-        let mut sz = self.size;
-        sz.x = val * self.size.x;
-        let pos = self.center - self.axes().sum();
-        RectShapeBuilder::from_top_left(pos, sz, self.angle).build()
-    }
-}
 
 shape_builder! { 
     RectShapeBuilder for RectShape {
@@ -115,3 +105,13 @@ impl RectShapeBuilder {
     }
 }
 
+pub struct LinearSlicer {}
+
+impl ShapeSlicer<RectShape, f32> for LinearSlicer {
+    fn shape_slice(&self, shape: &RectShape , val: f32) -> RectShape {
+        let mut sz = shape.size;
+        sz.x = val * shape.size.x;
+        let pos = shape.center - shape.axes().sum();
+        rect_shape::RectShapeBuilder::from_top_left(pos, sz, shape.angle).build()
+    }
+}

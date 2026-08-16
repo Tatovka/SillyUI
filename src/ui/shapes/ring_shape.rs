@@ -89,21 +89,6 @@ impl HitboxPadding for RingShape {
     }
 }
 
-
-impl Path<f32, RingTrajectory> for RingShape {
-    fn start_pos(&self) -> Point {
-        self.center + Point::from_angle(self.start_angle) * (self.radius - self.width / 2.) 
-    }
-
-    fn get_trajectory(&self) -> RingTrajectory {
-        RingTrajectory {center: self.center, radius: self.radius - self.width / 2., start_angle: self.start_angle, radians: self.radians}
-    }
-
-    fn slice_to(&self, val: f32) -> impl Shape {
-        RingShape::sector(self.center, self.radius, self.width, self.start_angle, val * self.radians)
-    }
-}
-
 shape_builder! { 
     RingShapeBuilder for RingShape {
         center: Point = Point{x: 0., y: 0.},
@@ -114,4 +99,12 @@ shape_builder! {
     }
     position: center
     => RingShape::sector(center, radius, width, start_angle, radians)
+}
+
+pub struct RingSlicer {}
+
+impl ShapeSlicer<RingShape, f32> for RingSlicer {
+    fn shape_slice(&self, shape: &RingShape , val: f32) -> RingShape {
+        RingShape::sector(shape.center, shape.radius, shape.width, shape.start_angle, val * shape.radians)
+    }
 }

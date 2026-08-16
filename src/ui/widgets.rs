@@ -43,10 +43,11 @@ pub struct WidgetState {
     pub captured: bool,
 }
 
-pub trait WidgetStyle {
+pub trait WidgetStyle{
     fn style(&self, base_style: Style, state: WidgetState) -> Style;
 }
 
+#[derive(Clone, Copy)]
 pub struct DarkenOnInteract {
     pub hover_amount: f32,
     pub press_amount: f32,
@@ -114,10 +115,15 @@ impl StatefulOutline {
         Self { hover_color, press_color, press_width: 2.0, hover_width: 2.0 }
     }
 
+    pub fn colored(c: Color) -> Self {
+        Self::new(c, c)
+    }
+
     pub fn hover_color(mut self, c: Color) -> Self {
         self.hover_color = c;
         self
     }
+
     pub fn press_color(mut self, c: Color) -> Self {
         self.press_color = c;
         self
@@ -139,4 +145,28 @@ impl StatefulOutline {
         self
     }
 
+}
+
+#[macro_export]
+macro_rules! setters {
+    ( $( $field:ident : $fty:ty ),* $(,)? ) => {
+        $(
+            pub fn $field(mut self, val: $fty) -> Self {
+                self.$field = val;
+                self
+            }
+        )*
+    };
+}
+
+#[macro_export]
+macro_rules! opt_setters {
+    ( $( $field:ident : $fty:ty ),* $(,)? ) => {
+        $(
+            pub fn $field(mut self, val: $fty) -> Self {
+                self.$field = Some(val);
+                self
+            }
+        )*
+    };
 }

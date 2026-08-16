@@ -5,7 +5,7 @@ pub struct Handler<M : Clone, V : Clone, S: Shape + Movable, T: Trajectory<V>> {
     pub shape: S,
 
     pub main_style: Style,
-    pub style_change: Box<dyn WidgetStyle>,
+    pub style_fn: Box<dyn WidgetStyle>,
 
     pub on_capture: Box<dyn Fn(V) -> M>,
     pub on_drag: Box<dyn Fn(V) -> M>,
@@ -22,7 +22,7 @@ impl<M: Clone + 'static, V: Clone + 'static, S: Shape + Movable, T: Trajectory<V
         on_capture: Box<dyn Fn(V) -> M>, on_release: Box<dyn Fn(V) -> M>, on_drag: Box<dyn Fn(V) -> M>,
         base_val: V, trajectory: T,
     ) -> Self {
-        Self { shape, main_style, style_change: style_change, 
+        Self { shape, main_style, style_fn: style_change, 
             on_capture, on_release, on_drag,
             val: base_val.clone(), trajectory,
         }
@@ -37,7 +37,7 @@ impl<M: Clone, V: Clone, S: Shape + Movable, T: Trajectory<V>> Hitbox for Handle
 
 impl<M: Clone + 'static, V: Clone, S: Shape + Movable, T: Trajectory<V>> Drawable for Handler<M, V, S, T> {
     fn draw(&self, d: &mut RaylibDrawHandle, state: WidgetState) {
-        self.shape.draw(d, self.style_change.style(self.main_style, state));
+        self.shape.draw(d, self.style_fn.style(self.main_style, state));
     }
 }
 

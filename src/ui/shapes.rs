@@ -3,7 +3,6 @@ use std::f32::consts::{PI, TAU};
 use std::marker::PhantomData;
 
 use super::*;
-use super::trajectories::*;
 
 pub mod circle_shape;
 pub mod rect_shape;
@@ -17,12 +16,9 @@ where Self: Sized {
     fn build(&self) -> T;
     fn set_position(self, p: Point) -> Self;
 } 
-pub trait Path<V, T: Trajectory<V>>: Shape {
-    fn start_pos(&self) -> Point;
 
-    fn get_trajectory(&self) -> T;
-
-    fn slice_to(&self, val: V) -> impl Shape;
+pub trait ShapeSlicer<S: Shape, V> {
+    fn shape_slice(&self, shape: &S , val: V) -> S;
 }
 
 #[macro_export]
@@ -60,55 +56,6 @@ macro_rules! shape_builder {
         }
     }
 }
-
-#[derive(Clone, Copy)]
-pub struct FnShapeBuilder<U, V, F, UB> 
-where
-    U: Shape,
-    V: Shape,
-    UB: ShapeBuilder<U>,
-    F: Copy + FnOnce(U) -> V 
-{
-    u_builder: UB,
-    fun: F,
-    _marker: std::marker::PhantomData<(U, V)>
-}
-
-impl<U, V, F, UB> ShapeBuilder<V> for FnShapeBuilder<U, V, F, UB> 
-where
-    U: Shape,
-    V: Shape,
-    UB: ShapeBuilder<U>,
-    F: Copy + FnOnce(U) -> V + Copy 
-{
-    fn build(&self) -> V {
-        let fun = self.fun;
-        fun(self.u_builder.build())
-    }
-
-    fn set_position(mut self, p: Point) -> Self {
-        self.u_builder = self.u_builder.set_position(p);
-        self
-    }
-}
-
-fn fn_builder<U, V, F, UB> (ub: UB, f: F) -> FnShapeBuilder<U, V, F, UB>
-where 
-    U: Shape,
-    V: Shape,
-    UB: ShapeBuilder<U>,
-    F: Copy + FnOnce(U) -> V + Copy 
-{
-        FnShapeBuilder { u_builder: ub, fun: f, _marker: PhantomData }
-}
-
-pub fn padded<U, UB> (ub: UB, extra: f32) -> impl ShapeBuilder<Combined<U, U>> + Copy
-where 
-    U: Shape + HitboxPadding + Copy,
-    UB: ShapeBuilder<U> + Copy, {
-        fn_builder(ub, move |u: U| Combined{hitbox: u.padded(extra), drawable: u})
-    }
-
 
 #[derive (Clone, Copy)]
 pub struct Combined<H: Shape, D: Shape> {
@@ -162,20 +109,20 @@ where
         Combined { hitbox: self.hitbox.build(), drawable: self.drawable.build() }
     }
 }
+pub struct CombinedSlicer<HS, DS> {
+    pub hitbox_slicer: HS,
+    pub drawable_slicer: DS
+}
 
-impl<V, T, H, D> Path<V, T> for Combined<H, D> 
+impl<H, D, HS, DS, V> ShapeSlicer<Combined<H, D>, V> for CombinedSlicer<HS, DS> 
 where 
-    T: Trajectory<V>, 
-    H: Path<V, T>, 
-    D: Path<V, T>
+    V: Clone,
+    H: Shape,
+    D: Shape,
+    HS: ShapeSlicer<H, V>,
+    DS: ShapeSlicer<D, V>
 {
-    fn start_pos(&self) -> Point {
-        self.hitbox.start_pos()
-    }
-    fn get_trajectory(&self) -> T {
-        self.hitbox.get_trajectory()
-    }
-    fn slice_to(&self, val: V) -> impl Shape {
-        self.drawable.slice_to(val)
+    fn shape_slice(&self, shape: &Combined<H, D> , val: V) -> Combined<H, D>{
+        Combined {hitbox: self.hitbox_slicer.shape_slice(&shape.hitbox, val.clone()), drawable: self.drawable_slicer.shape_slice(&shape.drawable, val)}
     }
 }

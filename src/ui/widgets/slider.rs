@@ -1,14 +1,24 @@
-use std::marker::PhantomData;
+use crate::ui::shapes::circle_shape::CircleShapeBuilder;
 use crate::ui::theme::default_theme;
 use crate::ui::widgets::handler::Handler;
 use crate::ui::widgets::trajectories::*;
 use crate::ui::shapes::*;
+use crate::opt_setters;
+use trajectories::paths::*;
 
 use super::*;
-pub struct Slider<M : Clone, V : Clone, S1: Shape + Movable, S2: Path<V, T>, T: Trajectory<V>> {
+pub struct Slider<M, V, S1, S2, SL, T> 
+where
+M : Clone, 
+V : Clone, 
+S1: Shape + Movable, 
+S2: Shape,
+SL: ShapeSlicer<S2, V>,
+T: Trajectory<V> {
     pub handler: Handler<M, V, S1, T>,
 
     pub track_shape: S2,
+    pub track_slicer: SL,
 
     pub track_style: Style,
     pub active_style: Style,
@@ -16,40 +26,47 @@ pub struct Slider<M : Clone, V : Clone, S1: Shape + Movable, S2: Path<V, T>, T: 
     handler_hovered: bool
 }
 
-impl<M, V, S1, S2, T> Slider<M, V, S1, S2, T> 
+impl<M, V, S1, S2, SL, T> Slider<M, V, S1, S2, SL, T> 
 where 
     M : Clone + 'static, 
     V : Clone + 'static, 
     S1: Shape + Movable,
-    S2: Path<V, T>,
+    S2: Shape,
+    SL: ShapeSlicer<S2, V>,
     T: Trajectory<V>{
+
         pub fn new(
             handler_shape: S1, 
             handler_style: Style,
+            handler_style_fn: Box<dyn WidgetStyle>,
+            trajectory: T,
 
-            handler_style_change: Box<dyn WidgetStyle>,
-            path: S2, 
+            track_shape: S2, 
+            track_slicer: SL,
             track_style: Style,
             active_style: Style,
+            
+            base_val: V,
+
             on_capture: Box<dyn Fn(V) -> M>,
             on_drag: Box<dyn Fn(V) -> M>,
             on_release: Box<dyn Fn(V) -> M>,
-            base_val: V,
         ) -> Self {
             let handler = Handler::new(
                 handler_shape,
                 handler_style,
-                handler_style_change,
+                handler_style_fn,
                 on_capture,
                 on_release,
                 on_drag,
                 base_val.clone(),
-                path.get_trajectory()
+                trajectory
             );
 
             let mut res = Slider { 
                 handler,
-                track_shape: path,
+                track_shape,
+                track_slicer,
                 track_style,
                 active_style,
                 handler_hovered: false
@@ -65,151 +82,13 @@ where
         }
 }
 
-pub struct SliderBuilder<M, V, HB, TB, T, P>
-where 
-    M : Copy, 
-    V : Copy, 
-    T : Trajectory<V>,
-    P : Path<V, T>,
-    TB : ShapeBuilder<P>
-{
-    track: TB,
-    handler_shape: HB,
-
-    value: Option<V>,
-
-    on_capture: Option<Box<dyn Fn(V) -> M>>,
-    on_drag: Option<Box<dyn Fn(V) -> M>>,
-    on_release: Option<Box<dyn Fn(V) -> M>>,
-
-    handler_style: Option<Style>,
-    handler_style_change: Option<Box<dyn WidgetStyle>>,
-    track_style: Option<Style>,
-    active_style: Option<Style>,
-
-    _marker: std::marker::PhantomData<(T, P)>
-}
-
-impl<M, V, HB, TB, T, P> SliderBuilder<M, V, HB, TB, T, P>
-where 
-    M : Copy + 'static, 
-    V : Copy + Default + 'static, 
-    T : Trajectory<V>,
-    P : Path<V, T>,
-    TB : ShapeBuilder<P> + Copy,
-    HB: Copy 
-{
-
-    pub fn from_shapes(track: TB, handler: HB) -> Self {
-        Self {
-            handler_shape: handler,
-            track: track,
-            handler_style: None,
-            handler_style_change: None,
-            track_style: None,
-            active_style: None,
-            value: None,
-            on_capture: None,
-            on_drag: None,
-            on_release: None,
-            _marker: PhantomData
-        }
-    }
-
-    pub fn as_template(&self) -> Self {
-        let mut res = Self::from_shapes(self.track, self.handler_shape);
-        res.handler_style = self.handler_style;
-        res.track_style = self.track_style;
-        res.active_style = self.active_style;
-        res
-    }
-
-    pub fn handler_style(mut self, style: Style) -> Self {
-        self.handler_style = Some(style);
-        self
-    }
-
-    pub fn handler_style_change(mut self, style: impl WidgetStyle + 'static) -> Self {
-        self.handler_style_change = Some(Box::new(style));
-        self
-    }
-
-    pub fn track_style(mut self, style: Style) -> Self {
-        self.track_style = Some(style);
-        self
-    }
-
-    pub fn active_style(mut self, style: Style) -> Self {
-        self.active_style = Some(style);
-        self
-    }
-
-    pub fn position(mut self, p: Point) -> Self {
-        self.track = self.track.set_position(p);
-        self
-    }
-
-    pub fn on_action(self, f: impl Fn(V) -> M + Clone + 'static) -> Self {
-        let (a, b, c) = (f.clone(), f.clone(), f);
-        self.on_capture(a).on_drag(b).on_release(c)
-    }
-
-    pub fn on_capture(mut self, f: impl Fn(V) -> M + 'static) -> Self {
-        self.on_capture = Some(Box::new(f));
-        self
-    }
-
-    pub fn on_drag(mut self, f: impl Fn(V) -> M + 'static) -> Self {
-        self.on_drag = Some(Box::new(f));
-        self
-    }
-
-    pub fn on_release(mut self, f: impl Fn(V) -> M + 'static) -> Self {
-        self.on_release = Some(Box::new(f));
-        self
-    }
-
-    pub fn value(mut self, v: V) -> Self {
-        self.value = Some(v);
-        self
-    }
-
-    pub fn build<S>(self) -> Slider<M, V, S, P, T>
-    where
-        S: Shape + Movable, 
-        HB: ShapeBuilder<S>, 
-        TB: ShapeBuilder<P> {
-
-        let on_capture = self.on_capture.expect("SliderBuilder: on_capture is required");
-        let on_drag = self.on_drag.expect("SliderBuilder: on_drag is required");
-        let on_release = self.on_release.expect("SliderBuilder: on_release is required");
-
-        let path = self.track.build();
-        let handler_shape = self.handler_shape.set_position(path.start_pos()).build();
-
-        let default_theme = default_theme();
-
-        Slider::new(
-            handler_shape, 
-            self.handler_style.unwrap_or(Style::new(default_theme.surface()).shadow(Color::new(0,0,0,50))), 
-            self.handler_style_change.unwrap_or(Box::new(DarkenOnInteract::default())),
-            path, 
-            self.track_style.unwrap_or(Style::new(default_theme.track())), 
-            self.active_style.unwrap_or(Style::new(default_theme.slider_active())),
-            on_capture, 
-            on_drag, 
-            on_release, 
-            self.value.unwrap_or_default()
-        )
-    }
-}
-
-impl<M, V, S1, S2, T> Movable for Slider<M, V, S1, S2, T> 
-where 
-    M : Clone + 'static, 
-    V : Clone + 'static, 
-    S1: Shape + Movable,
-    S2: Path<V, T> + Movable,
+impl<M, V, S1, S2, SL, T> Movable for Slider<M, V, S1, S2, SL, T> 
+where
+    M : Clone, 
+    V : Clone, 
+    S1: Shape + Movable, 
+    S2: Shape + Movable,
+    SL: ShapeSlicer<S2, V>,
     T: Trajectory<V> + Movable 
 {
         fn move_by(&mut self, v: Point) {
@@ -225,12 +104,13 @@ where
         }
 }
 
-impl<M, V, S1, S2, T> Hitbox for Slider<M, V, S1, S2, T> 
+impl<M, V, S1, S2, SL, T> Hitbox for Slider<M, V, S1, S2, SL, T> 
 where 
     M : Clone, 
     V : Clone, 
     S1: Shape + Movable,
-    S2: Path<V, T>,
+    S2: Shape,
+    SL: ShapeSlicer<S2, V>,
     T: Trajectory<V> + Copy
 {
     fn hit(&self, p: Point) -> bool {
@@ -238,32 +118,35 @@ where
     }
 }
 
-impl<M, V, S1, S2, T> Drawable for Slider<M, V, S1, S2, T> 
+impl<M, V, S1, S2, SL, T> Drawable for Slider<M, V, S1, S2, SL, T> 
 where 
     M : Clone + 'static, 
     V : Clone, 
     S1: Shape + Movable,
-    S2: Path<V, T>,
-    T: Trajectory<V> + Copy {
-
+    S2: Shape,
+    SL: ShapeSlicer<S2, V>,
+    T: Trajectory<V> + Copy
+{
     fn draw(&self, d: &mut RaylibDrawHandle, state: WidgetState) {
         let mut handler_state = state;
 
         handler_state.hovered &= self.handler_hovered;
 
         self.track_shape.draw(d, self.track_style);
-        self.track_shape.slice_to(self.handler.val.clone()).draw(d, self.active_style);
+        self.track_slicer.shape_slice(&self.track_shape, self.handler.val.clone()).draw(d, self.active_style);
         self.handler.draw(d, handler_state);
     }
 }
 
-impl<M, V, S1, S2, T> Widget<M> for Slider<M, V, S1, S2, T> 
+impl<M, V, S1, S2, SL, T> Widget<M> for Slider<M, V, S1, S2, SL, T> 
 where 
     M : Clone + 'static, 
     V : Clone, 
     S1: Shape + Movable,
-    S2: Path<V, T>,
-    T: Trajectory<V> + Copy {
+    S2: Shape,
+    SL: ShapeSlicer<S2, V>,
+    T: Trajectory<V> + Copy
+{
     
     fn on_pointer_move(&mut self, _: Point, pos: Point) -> Option<M> {
         if self.handler_hovered {
@@ -320,3 +203,106 @@ where
     }
 }
 
+#[derive(Copy, Clone)]
+pub struct SliderBuilder<V, P, HB = CircleShapeBuilder, WS = DarkenOnInteract>
+where 
+    V : Copy, 
+    P: Path<V>
+{
+    handler_shape: HB,
+    handler_style: Option<Style>,
+    handler_style_fn: WS,
+    path: P,
+
+    track_style: Option<Style>,
+    active_style: Option<Style>,
+
+    value: Option<V>,
+}
+
+impl<V, P> SliderBuilder<V, P, CircleShapeBuilder, DarkenOnInteract>
+where 
+    V : Copy + 'static,
+    P: Path<V> 
+{
+    pub fn from_path(path: P) -> Self {
+        Self {
+            path,
+            handler_shape: CircleShapeBuilder::default(),
+            handler_style: None,
+            track_style: None,
+            active_style: None,
+            handler_style_fn: DarkenOnInteract::default(),
+            value: None,
+        }
+    }
+}
+
+impl<V, P, HB, WS> SliderBuilder<V, P, HB, WS>
+where 
+    V : Copy + Default + 'static, 
+    WS: WidgetStyle + 'static,
+    P: Path<V>
+{
+
+    opt_setters! {
+        handler_style: Style,
+        track_style: Style,
+        active_style: Style,
+        value: V
+    }
+
+    pub fn handler_style_fn<WS2> (self, style_fn: WS2) -> SliderBuilder<V, P, HB, WS2> {
+        SliderBuilder {
+            path: self.path,
+            handler_shape: self.handler_shape,
+            handler_style: self.handler_style,
+            track_style: self.track_style,
+            active_style: self.active_style,
+            handler_style_fn: style_fn,
+            value: self.value,
+        }
+    }
+    
+    pub fn handler<HB2> (self, handler: HB2) -> SliderBuilder<V, P, HB2, WS> {
+        SliderBuilder {
+            path: self.path,
+            handler_shape: handler,
+            handler_style: self.handler_style,
+            track_style: self.track_style,
+            active_style: self.active_style,
+            handler_style_fn: self.handler_style_fn,
+            value: self.value,
+        }
+    }
+
+    pub fn position(mut self, p: Point) -> Self {
+        self.path = self.path.position(p);
+        self
+    }
+
+    pub fn build<HS, M: Copy + 'static>(self, f: impl Fn(V) -> M + Clone + 'static) -> Slider<M, V, HS, P::S, P::SL, P::T>
+    where
+    HS: Shape + Movable, 
+    HB: ShapeBuilder<HS> {
+        let value = self.value.unwrap_or_default();
+        let handler_shape = self.handler_shape.build();
+
+        let default_theme = default_theme();
+
+        Slider::new(
+            handler_shape, 
+            self.handler_style.unwrap_or(default_theme.surface()).shadow(Color::new(0,0,0,50)), 
+            Box::new(self.handler_style_fn),
+            self.path.get_trajectory(), 
+            self.path.shape(),
+            self.path.slicer(),
+            self.track_style.unwrap_or(default_theme.surface()), 
+            self.active_style.unwrap_or(default_theme.surface()),
+            value,
+            Box::new(f.clone()),
+            Box::new(f.clone()), 
+            Box::new(f),
+        )
+    }
+}
